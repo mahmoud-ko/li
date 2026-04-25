@@ -1,20 +1,15 @@
-/* ═══════════════════════════════════════════════
-   AURUM — Owner Portal · owner.js (integrated with backend API)
-═══════════════════════════════════════════════ */
+/* AURUM — owner.js (متكامل مع api.php) */
+const API_BASE = '/api.php?route=';
 
-const API_BASE = '/backend/api';
-
-/* ══════════════════┐
+/* ══════════════════
    THEME & CURSOR
-   └══════════════════ */
+══════════════════ */
 const body = document.body;
 const themeToggle = document.getElementById("themeToggle");
 const themeIcon = document.getElementById("themeIcon");
-
 const savedTheme = localStorage.getItem("aurum-theme") || "dark-mode";
 body.className = savedTheme;
 updateThemeIcon(savedTheme);
-
 themeToggle?.addEventListener("click", () => {
   const isDark = body.classList.contains("dark-mode");
   const next = isDark ? "light-mode" : "dark-mode";
@@ -24,7 +19,6 @@ themeToggle?.addEventListener("click", () => {
   const currentStars = document.getElementById('f-stars')?.value;
   if (currentStars) setStarRating(currentStars);
 });
-
 function updateThemeIcon(mode) {
   if (themeIcon) themeIcon.textContent = mode === "dark-mode" ? "☀" : "☾";
 }
@@ -34,15 +28,11 @@ function updateThemeIcon(mode) {
 ══════════════════ */
 let currentStep = 1;
 const totalSteps = 5;
-
 function goStep(n) {
   if (n < 1 || n > totalSteps) return;
   if (n > currentStep) {
     const err = validateStep(currentStep);
-    if (err) {
-      showToast(err, "error");
-      return;
-    }
+    if (err) { showToast(err, "error"); return; }
   }
   document.getElementById(`step-${currentStep}`).classList.remove("active");
   document.getElementById(`step-${n}`).classList.add("active");
@@ -53,13 +43,9 @@ function goStep(n) {
     if (s === n) el.classList.add("active");
   });
   currentStep = n;
-  window.scrollTo({
-    top: document.getElementById("listingForm").offsetTop - 80,
-    behavior: "smooth",
-  });
+  window.scrollTo({ top: document.getElementById("listingForm").offsetTop - 80, behavior: "smooth" });
   updateCompleteness();
 }
-
 function validateStep(step) {
   if (step === 1) {
     if (!document.getElementById("f-name").value.trim()) return "Please enter your hotel name.";
@@ -69,9 +55,9 @@ function validateStep(step) {
     if (!document.getElementById("f-desc").value.trim()) return "Please add a short description.";
   }
   if (step === 2) {
-    const prices = [...document.querySelectorAll(".room-price-inp")].map((i) => parseFloat(i.value));
+    const prices = [...document.querySelectorAll(".room-price-inp")].map(i => parseFloat(i.value));
     if (prices.length === 0) return "Please add at least one room type.";
-    if (prices.some((p) => isNaN(p) || p <= 0)) return "Please enter valid prices for all rooms.";
+    if (prices.some(p => isNaN(p) || p <= 0)) return "Please enter valid prices for all rooms.";
   }
   if (step === 4) {
     if (!document.getElementById("f-ownername").value.trim()) return "Please enter the owner name.";
@@ -85,7 +71,6 @@ function validateStep(step) {
    ROOM TYPES
 ══════════════════ */
 let roomIndex = 0;
-
 function addRoomType(name = "Deluxe Room", price = "", capacity = 2, qty = 10) {
   roomIndex++;
   const idx = roomIndex;
@@ -102,7 +87,7 @@ function addRoomType(name = "Deluxe Room", price = "", capacity = 2, qty = 10) {
       <div class="field-group">
         <label class="field-label">Room Category</label>
         <select class="field-input room-type-sel" onchange="updatePreview()">
-          ${types.map((t) => `<option ${t === name ? "selected" : ""}>${t}</option>`).join("")}
+          ${types.map(t => `<option ${t === name ? "selected" : ""}>${t}</option>`).join("")}
         </select>
       </div>
       <div class="field-group">
@@ -113,7 +98,7 @@ function addRoomType(name = "Deluxe Room", price = "", capacity = 2, qty = 10) {
     <div class="field-row">
       <div class="field-group">
         <label class="field-label">Max Guests</label>
-        <select class="field-input">${[1,2,3,4,5,6,8].map((n) => `<option ${n === capacity ? "selected" : ""}>${n} guest${n > 1 ? "s" : ""}</option>`).join("")}</select>
+        <select class="field-input">${[1,2,3,4,5,6,8].map(n => `<option ${n === capacity ? "selected" : ""}>${n} guest${n>1?"s":""}</option>`).join("")}</select>
       </div>
       <div class="field-group">
         <label class="field-label">Rooms Available</label>
@@ -139,7 +124,6 @@ function addRoomType(name = "Deluxe Room", price = "", capacity = 2, qty = 10) {
   updatePreview();
   updateCompleteness();
 }
-
 window.removeRoomEntry = function (idx) {
   const el = document.getElementById(`re-${idx}`);
   if (el) {
@@ -148,7 +132,6 @@ window.removeRoomEntry = function (idx) {
   }
   setTimeout(updatePreview, 350);
 };
-
 document.getElementById("addRoomTypeBtn").addEventListener("click", () => addRoomType());
 addRoomType("Deluxe Room", 350, 2, 12);
 addRoomType("Grand Suite", 850, 4, 4);
@@ -157,7 +140,6 @@ addRoomType("Grand Suite", 850, 4, 4);
    STAR SELECTOR
 ══════════════════ */
 const starValueLabel = document.getElementById("starValueLabel");
-
 function initStars() {
   const radios = document.querySelectorAll('.star-radio');
   if (!radios.length) return;
@@ -175,7 +157,6 @@ function initStars() {
   if (hidden) hidden.value = '';
   if (starValueLabel) starValueLabel.textContent = 'Select a star rating';
 }
-
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initStars);
 else initStars();
 
@@ -199,7 +180,7 @@ document.getElementById("langInput").addEventListener("keydown", (e) => {
 ══════════════════ */
 document.querySelectorAll(".comm-card").forEach((card) => {
   card.addEventListener("click", () => {
-    document.querySelectorAll(".comm-card").forEach((c) => c.classList.remove("active"));
+    document.querySelectorAll(".comm-card").forEach(c => c.classList.remove("active"));
     card.classList.add("active");
     document.getElementById("f-commission").value = card.dataset.val;
     document.getElementById("opbComm").textContent = card.dataset.val + "%";
@@ -214,12 +195,10 @@ const photoGrid = document.getElementById("photoGrid");
 const fileInput = document.getElementById("fileInput");
 const photoLabels = ["Exterior","Lobby","Room","Suite","Dining","Pool","Spa","Bar","Garden","View","Gym","Event Space","Terrace","Bathroom","Details","Night View","Rooftop","Entrance","Concierge","Breakfast"];
 let photoCount = 0;
-
 uploadZone.addEventListener("dragover", (e) => { e.preventDefault(); uploadZone.classList.add("drag-over"); });
 uploadZone.addEventListener("dragleave", () => uploadZone.classList.remove("drag-over"));
 uploadZone.addEventListener("drop", (e) => { e.preventDefault(); uploadZone.classList.remove("drag-over"); handleFiles(e.dataTransfer.files); });
 fileInput.addEventListener("change", (e) => handleFiles(e.target.files));
-
 function handleFiles(files) {
   [...files].forEach((file) => {
     if (!file.type.startsWith("image/")) return;
@@ -239,7 +218,6 @@ function handleFiles(files) {
     reader.readAsDataURL(file);
   });
 }
-
 window.removePhoto = function (id) {
   const el = document.getElementById(`pt-${id}`);
   if (el) el.remove();
@@ -253,7 +231,6 @@ window.removePhoto = function (id) {
 const previewUpdating = document.getElementById("previewUpdating");
 let previewTimer;
 function flashUpdating() { previewUpdating.classList.add("show"); clearTimeout(previewTimer); previewTimer = setTimeout(() => previewUpdating.classList.remove("show"), 800); }
-
 function updatePreview() {
   flashUpdating();
   const name = document.getElementById("f-name").value || "Your Hotel Name";
@@ -280,12 +257,10 @@ function updatePreview() {
   document.getElementById("opbEmail").textContent = ownerEmail;
   updateCompleteness();
 }
-
 function updatePreviewImage(src) {
   const placeholder = document.getElementById("prevImgPlaceholder");
   placeholder.innerHTML = `<img src="${src}" style="width:100%;height:100%;object-fit:cover;" alt="Hotel"/>`;
 }
-
 document.getElementById("f-desc").addEventListener("input", function () { document.getElementById("descCount").textContent = this.value.length; updatePreview(); });
 ["f-name","f-city","f-country","f-address","f-desc","f-ownername","f-email","f-type"].forEach(id => { const el = document.getElementById(id); if (el) el.addEventListener("input", updatePreview); });
 document.querySelectorAll('input[name="amenity"]').forEach(el => el.addEventListener("change", updatePreview));
@@ -325,7 +300,7 @@ counterEls.forEach(el=>counterObs.observe(el));
 setTimeout(()=>{ document.querySelectorAll(".vc-bar-fill").forEach(el=>{ el.style.width = el.style.width; }); },500);
 
 /* ══════════════════
-   SUBMIT (modified to send to API)
+   SUBMIT (معدل لإرسال إلى API)
 ══════════════════ */
 document.getElementById("finalSubmitBtn").addEventListener("click", async () => {
   if (!document.getElementById("agreeTerms").checked) {
@@ -334,15 +309,12 @@ document.getElementById("finalSubmitBtn").addEventListener("click", async () => 
   }
   const name = document.getElementById("f-name").value.trim();
   if (!name) { showToast("Hotel name is required.", "error"); return; }
-
   const token = localStorage.getItem('aurum-token');
   if (!token) {
     showToast("Please login as owner first. Redirecting...", "error");
     setTimeout(() => window.location.href = 'auth.html?role=owner', 1500);
     return;
   }
-
-  // جمع بيانات العقار
   const amenities = [...document.querySelectorAll('input[name="amenity"]:checked')].map(cb => cb.value);
   const propertyData = {
     name: name,
@@ -350,18 +322,14 @@ document.getElementById("finalSubmitBtn").addEventListener("click", async () => 
     country: document.getElementById("f-country").value.trim(),
     stars: parseInt(document.getElementById("f-stars").value) || 5,
     rooms: parseInt(document.getElementById("f-totalrooms").value) || 10,
-    price_from: 0, // يمكن تحسينه لاحقاً
+    price_from: 0,
     description: document.getElementById("f-desc").value.trim(),
     amenities: amenities
   };
-
   try {
-    const res = await fetch(`${API_BASE}/owner/properties`, {
+    const res = await fetch(`${API_BASE}owner/properties`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify(propertyData)
     });
     const data = await res.json();
@@ -377,7 +345,6 @@ document.getElementById("finalSubmitBtn").addEventListener("click", async () => 
   } catch(err) {
     console.error(err);
     showToast("Connection error. Using local save.", "error");
-    // Fallback to local storage
     const ref = "AUR-" + Math.random().toString(36).substr(2,6).toUpperCase();
     document.getElementById("successHotelName").textContent = name;
     document.getElementById("successRef").textContent = ref;
