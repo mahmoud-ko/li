@@ -1,81 +1,30 @@
 <?php
-// ============================================================
-//  controllers/AnalyticController.php
-// ============================================================
-
-require_once __DIR__ . '/../models/Analytic.php';
-require_once __DIR__ . '/../middleware/AuthMiddleware.php';
-require_once __DIR__ . '/../utils/Response.php';
-
-class AnalyticController {
-
-    // GET /analytics
-    public function index(): void {
-        AuthMiddleware::requireRole('manager');
-        Response::success((new Analytic())->getAll());
+require_once 'Database.php';
+require_once 'AuthMiddleware.php';
+require_once 'Response.php';
+class AnalyticsController {
+    private PDO $db;
+    public function __construct() { $this->db = Database::getInstance()->getConnection(); $this->ensureAnalyticsTable(); }
+    private function ensureAnalyticsTable() {
+        $this->db->exec("CREATE TABLE IF NOT EXISTS owner_analytics (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            owner_id INT NOT NULL,
+            total_bookings INT DEFAULT 0,
+            total_revenue DECIMAL(12,2) DEFAULT 0,
+            occupancy_rate DECIMAL(5,2) DEFAULT 0,
+            month_year DATE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )");
     }
-
-    // GET /analytics/{id}
-    public function show(int $id): void {
-        AuthMiddleware::requireRole('manager');
-        $record = (new Analytic())->getById($id);
-        if (!$record) Response::notFound("Analytics record #$id not found.");
-        Response::success($record);
-    }
-
-    // GET /analytics/hotel/{hotel_id}
-    public function byHotel(int $hotel_id): void {
-        AuthMiddleware::requireRole('manager');
-        Response::success((new Analytic())->getByHotel($hotel_id));
-    }
-
-    // POST /analytics  (manual entry)
-    public function store(): void {
-        AuthMiddleware::requireRole('manager');
-        $body = json_decode(file_get_contents('php://input'), true) ?? [];
-
-        $hotel_id        = (int)($body['hotel_id']                   ?? 0);
-        $occupancy_rate  = (float)($body['occupancy_rate']           ?? 0);
-        $avg_daily_rate  = (float)($body['avg_daily_rate']           ?? 0);
-        $rev_par         = (float)($body['revenue_per_available_room'] ?? 0);
-
-        if (!$hotel_id) Response::error('hotel_id is required.');
-
-        $id = (new Analytic())->create($hotel_id, $occupancy_rate, $avg_daily_rate, $rev_par);
-        Response::success(['analytics_id' => $id], 'Analytics record created.', 201);
-    }
-
-    // POST /analytics/compute/{hotel_id}  (auto-compute snapshot)
-    public function compute(int $hotel_id): void {
-        AuthMiddleware::requireRole('manager');
-        $id = (new Analytic())->computeAndSave($hotel_id);
-        Response::success(['analytics_id' => $id], 'Analytics snapshot computed and saved.');
-    }
-
-    // PUT /analytics/{id}
-    public function update(int $id): void {
-        AuthMiddleware::requireRole('manager');
-        $body  = json_decode(file_get_contents('php://input'), true) ?? [];
-        $model = new Analytic();
-        if (!$model->getById($id)) Response::notFound("Analytics record #$id not found.");
-
-        $fields = array_filter([
-            'occupancy_rate'             => isset($body['occupancy_rate'])             ? (float)$body['occupancy_rate']             : null,
-            'avg_daily_rate'             => isset($body['avg_daily_rate'])             ? (float)$body['avg_daily_rate']             : null,
-            'revenue_per_available_room' => isset($body['revenue_per_available_room']) ? (float)$body['revenue_per_available_room'] : null,
-        ], fn($v) => $v !== null);
-
-        if (empty($fields)) Response::error('No valid fields to update.');
-        $model->update($id, $fields);
-        Response::success(null, 'Analytics record updated.');
-    }
-
-    // DELETE /analytics/{id}
-    public function destroy(int $id): void {
-        AuthMiddleware::requireRole('superadmin');
-        $model = new Analytic();
-        if (!$model->getById($id)) Response::notFound("Analytics record #$id not found.");
-        $model->delete($id);
-        Response::success(null, 'Analytics record deleted.');
+    public function getDashboard(): void {
+        $payload = AuthMiddleware::requireRole('owner');
+        $owner_id = $payload['user_id'];
+        $stmt = $this->db->prepare("SELECT COUNT(*) as total_bookings, COALESCE(SUM(b.total_price),0) as total_revenue FROM bookings b JOIN hotels h ON b.hotel_id = h.hotel_id WHERE h.owner_id = ?");
+        $stmt->execute([$owner_id]);
+        $stats = $stmt->fetch();
+        $stmt2 = $this->db->prepare("SELECT b.*, u.name as guest_name FROM bookings b JOIN users u ON b.user_id = u.user_id JOIN hotels h ON b.hotel_id = h.hotel_id WHERE h.owner_id = ? ORDER BY b.created_at DESC LIMIT 10");
+        $stmt2->execute([$owner_id]);
+        $recent = $stmt2->fetchAll();
+        Response::success(['stats' => $stats, 'recent_bookings' => $recent]);
     }
 }
