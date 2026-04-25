@@ -8,7 +8,7 @@ class AIConciergeController {
     
     public function __construct() {
         // محاولة قراءة المفتاح من ملف .env (آمن)
-        $this->groqApiKey='';
+        $this->groqApiKey = getenv('GROQ_API_KEY') ?: '';
         if (file_exists(__DIR__ . '/.env')) {
             $lines = file(__DIR__ . '/.env');
             foreach ($lines as $line) {
