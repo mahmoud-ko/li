@@ -1,8 +1,8 @@
 /* ═══════════════════════════════════════════════
-   AURUM — app.js (متكامل مع api.php)
+   AURUM — app.js (مع تصحيح AI Concierge)
 ═══════════════════════════════════════════════ */
 
-const API_BASE = '/api.php?route=';  // تغيير المسار
+const API_BASE = '/api.php?route=';   // المسار الصحيح لملف api.php
 
 /* ══════════ THEME ══════════ */
 const body = document.body;
@@ -626,7 +626,7 @@ if (payConfirm) {
   });
 }
 
-/* ══════════ AI CONCIERGE (معدل) ══════════ */
+/* ══════════ AI CONCIERGE (المعدل بالكامل مع fallback محلي) ══════════ */
 const aiModal    = document.getElementById('aiModal');
 const aiMessages = document.getElementById('aiMessages');
 const aiInput    = document.getElementById('aiInput');
@@ -651,6 +651,51 @@ function appendMsg(text, role) {
   return div;
 }
 
+// ========== رد محلي ذكي (يعمل بدون اتصال بالخادم) ==========
+function generateLocalAIResponse(userMessage) {
+  const msg = userMessage.toLowerCase();
+  let city = null;
+  let budget = null;
+  const cities = ['paris','dubai','tokyo','algiers','marrakech','istanbul','barcelona'];
+  for (let c of cities) {
+    if (msg.includes(c)) { city = c; break; }
+  }
+  const match = msg.match(/\d+/);
+  if (match) budget = parseInt(match[0]);
+  
+  // قائمة افتراضية بالفنادق
+  const hotelsList = {
+    paris: [{ name:'Le Grand Hôtel', price:450, stars:5, desc:'Belle Époque grandeur' },
+            { name:'Hôtel de Crillon', price:980, stars:5, desc:'Palatial 18th-century landmark' }],
+    dubai: [{ name:'Burj Al Arab', price:1800, stars:5, desc:'Iconic sail-shaped' },
+            { name:'Atlantis The Palm', price:620, stars:5, desc:'Waterpark and restaurants' }],
+    tokyo: [{ name:'The Peninsula', price:720, stars:5, desc:'Eastern refinement' },
+            { name:'Mandarin Oriental', price:890, stars:5, desc:'Legendary spa' }],
+    algiers: [{ name:'Sofitel Algiers', price:220, stars:5, desc:'French elegance' },
+              { name:'El Djazair Hotel', price:180, stars:5, desc:'Colonial-era landmark' }],
+    marrakech: [{ name:'La Mamounia', price:750, stars:5, desc:'Moorish splendour' }],
+    istanbul: [{ name:'Four Seasons Bosphorus', price:680, stars:5, desc:'Ottoman palace' }],
+    barcelona: [{ name:'Hotel Arts Barcelona', price:480, stars:5, desc:'Beachfront masterpiece' }]
+  };
+  
+  if (city && hotelsList[city]) {
+    let filtered = hotelsList[city];
+    if (budget) filtered = filtered.filter(h => h.price <= budget);
+    if (filtered.length > 0) {
+      let top = filtered[0];
+      let reply = `Based on your request, I recommend ${top.name} in ${city.charAt(0).toUpperCase() + city.slice(1)}. It offers ${top.stars} stars from $${top.price}/night. ${top.desc}`;
+      if (filtered.length > 1) reply += ` Another great option is ${filtered[1].name} from $${filtered[1].price}/night.`;
+      return reply;
+    } else {
+      return `I couldn't find hotels in ${city} within your budget of $${budget}. Please consider increasing your budget or choosing another destination.`;
+    }
+  } else if (city) {
+    return `I'm sorry, I don't have information about hotels in ${city} yet. Would you like to try Paris, Dubai, Tokyo, Algiers, Marrakech, Istanbul, or Barcelona?`;
+  } else {
+    return "I'd love to help you find the perfect hotel! Please tell me which city you're interested in (Paris, Dubai, Tokyo, Algiers, Marrakech, Istanbul, Barcelona) and your approximate budget per night.";
+  }
+}
+
 async function sendAI() {
   const text = aiInput.value.trim();
   if (!text) return;
@@ -659,6 +704,8 @@ async function sendAI() {
   const typing = appendMsg('', 'bot');
   typing.classList.add('ai-typing');
 
+  // محاولة الاتصال بالباك إند أولاً
+  let responseText = null;
   try {
     const response = await fetch(`${API_BASE}ai/concierge`, {
       method: 'POST',
@@ -666,16 +713,16 @@ async function sendAI() {
       body: JSON.stringify({ message: text })
     });
     const data = await response.json();
-    typing.classList.remove('ai-typing');
-    if (data.success) {
-      typing.querySelector('.ai-msg-bubble').innerHTML = data.data.response;
+    if (data.success && data.data.response) {
+      responseText = data.data.response;
+      // إذا كان هناك اقتراحات فنادق من الباك إند نضيفها
       if (data.data.suggestions && data.data.suggestions.length) {
         const btnContainer = document.createElement('div');
         btnContainer.style.marginTop = '12px';
         btnContainer.style.display = 'flex';
         btnContainer.style.gap = '8px';
         btnContainer.style.flexWrap = 'wrap';
-        data.data.suggestions.slice(0, 3).forEach(hotel => {
+        data.data.suggestions.slice(0,3).forEach(hotel => {
           const btn = document.createElement('button');
           btn.className = 'btn-outline';
           btn.style.fontSize = '9px';
@@ -695,21 +742,21 @@ async function sendAI() {
         typing.querySelector('.ai-msg-bubble').appendChild(btnContainer);
       }
     } else {
-      typing.querySelector('.ai-msg-bubble').innerHTML = 'AI service unavailable. Please try again later.';
+      throw new Error('Invalid response');
     }
   } catch(err) {
-    typing.classList.remove('ai-typing');
-    typing.querySelector('.ai-msg-bubble').innerHTML = 'Connection error. Unable to reach AI concierge.';
-    console.error(err);
+    console.warn('Backend AI failed, using local fallback', err);
+    responseText = generateLocalAIResponse(text);
   }
+  
+  typing.classList.remove('ai-typing');
+  typing.querySelector('.ai-msg-bubble').innerHTML = responseText || "I'm having trouble connecting right now. Please try again later.";
   aiMessages.scrollTop = aiMessages.scrollHeight;
 }
 
-function parseUserFilters(text) {
+function parseUserFilters(text) { // تبقى موجودة لكن لا تستخدم حالياً
   const t = text.toLowerCase();
-  let rooms    = 1;
-  let children = 0;
-  let maxPrice = null;
+  let rooms = 1, children = 0, maxPrice = null;
   const roomMatch = t.match(/(\d+)\s*(?:room|bedroom|suite)/);
   if (roomMatch) rooms = parseInt(roomMatch[1]);
   const childMatch = t.match(/(\d+)\s*(?:child|kid|children)/);
@@ -729,12 +776,9 @@ function parseUserFilters(text) {
   return { city, rooms, children, maxPrice };
 }
 
-function parseReplyFilters(reply) {
+function parseReplyFilters(reply) { // تبقى موجودة
   const r = reply.toLowerCase();
-  let price   = null;
-  let rooms   = null;
-  let children= null;
-  let city    = null;
+  let price = null, rooms = null, children = null, city = null;
   const priceMatches = [...r.matchAll(/\$(\d+)/g)].map(m => parseInt(m[1]));
   if (priceMatches.length) price = Math.max(...priceMatches);
   const roomMatch = r.match(/(\d+)\s*(?:room|bedroom)/);
