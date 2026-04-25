@@ -1,82 +1,45 @@
 <?php
-// ============================================================
-//  controllers/BookingController.php
-// ============================================================
-
-require_once __DIR__ . '/../models/Booking.php';
-require_once __DIR__ . '/../middleware/AuthMiddleware.php';
-require_once __DIR__ . '/../utils/Response.php';
-
-class BookingController {
-
-    // GET /bookings
-    public function index(): void {
-        AuthMiddleware::handle();
-        Response::success((new Booking())->getAll());
+require_once 'Database.php';
+require_once 'AuthMiddleware.php';
+require_once 'Response.php';
+class BookingsController {
+    private PDO $db;
+    public function __construct() { $this->db = Database::getInstance()->getConnection(); $this->ensureBookingsTable(); }
+    private function ensureBookingsTable() {
+        $this->db->exec("CREATE TABLE IF NOT EXISTS bookings (
+            booking_id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            hotel_id INT NOT NULL,
+            hotel_name VARCHAR(200),
+            check_in DATE NOT NULL,
+            check_out DATE NOT NULL,
+            rooms INT DEFAULT 1,
+            guests INT DEFAULT 2,
+            total_price DECIMAL(10,2) NOT NULL,
+            status ENUM('pending','confirmed','cancelled') DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )");
     }
-
-    // GET /bookings/active
-    public function active(): void {
-        AuthMiddleware::handle();
-        Response::success((new Booking())->getActive());
+    public function create(): void {
+        $payload = AuthMiddleware::handle();
+        $input = json_decode(file_get_contents('php://input'), true);
+        $hotel_id = (int)($input['hotel_id']??0);
+        $check_in = $input['check_in']??''; $check_out = $input['check_out']??'';
+        $rooms = (int)($input['rooms']??1); $guests = (int)($input['guests']??2);
+        $total_price = (float)($input['total_price']??0);
+        if (!$hotel_id || !$check_in || !$check_out) Response::error('Missing fields');
+        $stmt = $this->db->prepare("SELECT name FROM hotels WHERE hotel_id = ?");
+        $stmt->execute([$hotel_id]);
+        $hotel = $stmt->fetch();
+        if (!$hotel) Response::error('Hotel not found');
+        $stmt2 = $this->db->prepare("INSERT INTO bookings (user_id, hotel_id, hotel_name, check_in, check_out, rooms, guests, total_price, status) VALUES (?,?,?,?,?,?,?,?,'confirmed')");
+        $stmt2->execute([$payload['user_id'], $hotel_id, $hotel['name'], $check_in, $check_out, $rooms, $guests, $total_price]);
+        Response::success(['booking_id' => $this->db->lastInsertId()], 'Booking confirmed', 201);
     }
-
-    // GET /bookings/{id}
-    public function show(int $id): void {
-        AuthMiddleware::handle();
-        $booking = (new Booking())->getById($id);
-        if (!$booking) Response::notFound("Booking #$id not found.");
-        Response::success($booking);
-    }
-
-    // POST /bookings
-    public function store(): void {
-        AuthMiddleware::handle();
-        $body = json_decode(file_get_contents('php://input'), true) ?? [];
-
-        $guest_id   = (int)($body['guest_id']      ?? 0);
-        $room_id    = (int)($body['room_id']        ?? 0);
-        $check_in   = trim($body['check_in_date']   ?? '');
-        $check_out  = trim($body['check_out_date']  ?? '');
-        $status     = trim($body['status']          ?? 'pending');
-
-        if (!$guest_id || !$room_id || empty($check_in) || empty($check_out)) {
-            Response::error('guest_id, room_id, check_in_date, and check_out_date are required.');
-        }
-        if (strtotime($check_out) <= strtotime($check_in)) {
-            Response::error('check_out_date must be after check_in_date.');
-        }
-        $validStatuses = ['pending','confirmed','cancelled','completed'];
-        if (!in_array($status, $validStatuses)) {
-            Response::error('Invalid status value.');
-        }
-
-        $id = (new Booking())->create($guest_id, $room_id, $check_in, $check_out, $status);
-        Response::success(['booking_id' => $id], 'Booking created.', 201);
-    }
-
-    // PATCH /bookings/{id}/status
-    public function updateStatus(int $id): void {
-        AuthMiddleware::handle();
-        $body   = json_decode(file_get_contents('php://input'), true) ?? [];
-        $status = trim($body['status'] ?? '');
-        $valid  = ['pending','confirmed','cancelled','completed'];
-        if (!in_array($status, $valid)) {
-            Response::error('status must be one of: ' . implode(', ', $valid));
-        }
-
-        $model = new Booking();
-        if (!$model->getById($id)) Response::notFound("Booking #$id not found.");
-        $model->updateStatus($id, $status);
-        Response::success(null, 'Booking status updated.');
-    }
-
-    // DELETE /bookings/{id}
-    public function destroy(int $id): void {
-        AuthMiddleware::requireRole('manager');
-        $model = new Booking();
-        if (!$model->getById($id)) Response::notFound("Booking #$id not found.");
-        $model->delete($id);
-        Response::success(null, 'Booking deleted.');
+    public function getUserBookings(): void {
+        $payload = AuthMiddleware::handle();
+        $stmt = $this->db->prepare("SELECT * FROM bookings WHERE user_id = ? ORDER BY created_at DESC");
+        $stmt->execute([$payload['user_id']]);
+        Response::success($stmt->fetchAll());
     }
 }
