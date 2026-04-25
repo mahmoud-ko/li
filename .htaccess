@@ -1,5 +1,7 @@
 RewriteEngine On
-RewriteBase /back/hotel_backend/
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule ^(.*)$ index.php [QSA,L]
+# إعادة توجيه أي طلب لـ /api/xxx إلى api.php?route=xxx
+RewriteRule ^api/(.*)$ api.php?route=$1 [QSA,L]
+# منع الوصول المباشر إلى الملفات الحساسة
+<FilesMatch "\.(env|sql|md)$">
+    Require all denied
+</FilesMatch>
