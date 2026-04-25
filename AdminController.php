@@ -1,95 +1,63 @@
 <?php
-// ============================================================
-//  controllers/AdminController.php
-// ============================================================
-
-require_once __DIR__ . '/../models/AdminUser.php';
-require_once __DIR__ . '/../middleware/AuthMiddleware.php';
-require_once __DIR__ . '/../utils/Response.php';
-
-class AdminController {
-
-    // GET /admins
-    public function index(): void {
-        AuthMiddleware::requireRole('superadmin');
-        Response::success((new AdminUser())->getAll());
+require_once 'Database.php';
+require_once 'AuthMiddleware.php';
+require_once 'Response.php';
+class OwnerPropertiesController {
+    private PDO $db;
+    public function __construct() { $this->db = Database::getInstance()->getConnection(); $this->ensurePropertiesTable(); }
+    private function ensurePropertiesTable() {
+        $this->db->exec("CREATE TABLE IF NOT EXISTS owner_properties (
+            property_id INT AUTO_INCREMENT PRIMARY KEY,
+            owner_id INT NOT NULL,
+            name VARCHAR(200) NOT NULL,
+            city VARCHAR(100),
+            country VARCHAR(100),
+            stars INT DEFAULT 5,
+            rooms INT DEFAULT 10,
+            price_from DECIMAL(10,2),
+            description TEXT,
+            amenities TEXT,
+            status ENUM('pending','approved','rejected') DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )");
     }
-
-    // GET /admins/{id}
-    public function show(int $id): void {
-        AuthMiddleware::requireRole('superadmin');
-        $admin = (new AdminUser())->getById($id);
-        if (!$admin) Response::notFound("Admin #$id not found.");
-        Response::success($admin);
+    public function getAll(): void {
+        $payload = AuthMiddleware::requireRole('owner');
+        $stmt = $this->db->prepare("SELECT * FROM owner_properties WHERE owner_id = ? ORDER BY created_at DESC");
+        $stmt->execute([$payload['user_id']]);
+        Response::success($stmt->fetchAll());
     }
-
-    // POST /admins
-    public function store(): void {
-        AuthMiddleware::requireRole('superadmin');
-        $body = json_decode(file_get_contents('php://input'), true) ?? [];
-
-        $username = trim($body['username'] ?? '');
-        $password = $body['password']      ?? '';
-        $role     = trim($body['role']     ?? 'staff');
-
-        if (empty($username) || empty($password)) {
-            Response::error('username and password are required.');
-        }
-
-        $validRoles = ['superadmin','manager','staff'];
-        if (!in_array($role, $validRoles)) {
-            Response::error('role must be one of: ' . implode(', ', $validRoles));
-        }
-
-        $model = new AdminUser();
-        if ($model->getByUsername($username)) {
-            Response::error('Username already taken.', 409);
-        }
-
-        $id = $model->create($username, $password, $role);
-        Response::success(['admin_id' => $id], 'Admin created.', 201);
+    public function create(): void {
+        $payload = AuthMiddleware::requireRole('owner');
+        $input = json_decode(file_get_contents('php://input'), true);
+        $name = trim($input['name']??'');
+        if (!$name) Response::error('Property name required');
+        $amenities = is_array($input['amenities']??[]) ? implode(',', $input['amenities']) : '';
+        $stmt = $this->db->prepare("INSERT INTO owner_properties (owner_id, name, city, country, stars, rooms, price_from, description, amenities) VALUES (?,?,?,?,?,?,?,?,?)");
+        $stmt->execute([$payload['user_id'], $name, $input['city']??'', $input['country']??'', (int)($input['stars']??5), (int)($input['rooms']??1), (float)($input['price_from']??0), $input['description']??'', $amenities]);
+        Response::success(['property_id' => $this->db->lastInsertId()], 'Property submitted', 201);
     }
-
-    // PATCH /admins/{id}/role
-    public function updateRole(int $id): void {
-        AuthMiddleware::requireRole('superadmin');
-        $body = json_decode(file_get_contents('php://input'), true) ?? [];
-        $role = trim($body['role'] ?? '');
-        $valid = ['superadmin','manager','staff'];
-        if (!in_array($role, $valid)) {
-            Response::error('role must be one of: ' . implode(', ', $valid));
+    public function update(int $id): void {
+        $payload = AuthMiddleware::requireRole('owner');
+        $input = json_decode(file_get_contents('php://input'), true);
+        $check = $this->db->prepare("SELECT * FROM owner_properties WHERE property_id = ? AND owner_id = ?");
+        $check->execute([$id, $payload['user_id']]);
+        if (!$check->fetch()) Response::forbidden('Not your property');
+        $fields = []; $params = [];
+        foreach (['name','city','country','stars','rooms','price_from','description'] as $f) {
+            if (isset($input[$f])) { $fields[] = "$f = :$f"; $params[":$f"] = $input[$f]; }
         }
-
-        $model = new AdminUser();
-        if (!$model->getById($id)) Response::notFound("Admin #$id not found.");
-        $model->updateRole($id, $role);
-        Response::success(null, 'Admin role updated.');
+        if (isset($input['amenities']) && is_array($input['amenities'])) { $fields[] = "amenities = :amenities"; $params[':amenities'] = implode(',', $input['amenities']); }
+        if (empty($fields)) Response::error('No fields to update');
+        $params[':id'] = $id;
+        $sql = "UPDATE owner_properties SET " . implode(',', $fields) . " WHERE property_id = :id";
+        $this->db->prepare($sql)->execute($params);
+        Response::success(null, 'Property updated');
     }
-
-    // PATCH /admins/{id}/password
-    public function updatePassword(int $id): void {
-        $caller = AuthMiddleware::requireRole('manager');
-        // Managers can only change their own password; superadmin can change anyone's
-        if ($caller['role'] !== 'superadmin' && $caller['admin_id'] !== $id) {
-            Response::forbidden('You can only change your own password.');
-        }
-
-        $body     = json_decode(file_get_contents('php://input'), true) ?? [];
-        $password = $body['password'] ?? '';
-        if (strlen($password) < 6) Response::error('Password must be at least 6 characters.');
-
-        $model = new AdminUser();
-        if (!$model->getById($id)) Response::notFound("Admin #$id not found.");
-        $model->updatePassword($id, $password);
-        Response::success(null, 'Password updated.');
-    }
-
-    // DELETE /admins/{id}
-    public function destroy(int $id): void {
-        AuthMiddleware::requireRole('superadmin');
-        $model = new AdminUser();
-        if (!$model->getById($id)) Response::notFound("Admin #$id not found.");
-        $model->delete($id);
-        Response::success(null, 'Admin deleted.');
+    public function delete(int $id): void {
+        $payload = AuthMiddleware::requireRole('owner');
+        $stmt = $this->db->prepare("DELETE FROM owner_properties WHERE property_id = ? AND owner_id = ?");
+        $stmt->execute([$id, $payload['user_id']]);
+        Response::success(null, 'Property deleted');
     }
 }
